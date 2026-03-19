@@ -1,10 +1,9 @@
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { easings } from '@react-spring/web';
-import { EModelEndpoint, Constants } from 'librechat-data-provider';
+import { EModelEndpoint } from 'librechat-data-provider';
 import { BirthdayIcon, TooltipAnchor, SplitText } from '@librechat/client';
 import { useChatContext, useAgentsMapContext, useAssistantsMapContext } from '~/Providers';
 import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
-import AgentSelectorDropdown from '~/components/Chat/AgentSelectorDropdown';
 import ConvoIcon from '~/components/Endpoints/ConvoIcon';
 import { useLocalize, useAuthContext } from '~/hooks';
 import { getIconEndpoint, getEntity } from '~/utils';
@@ -65,9 +64,6 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
 
   const name = entity?.name ?? '';
   const description = (conversation?.greeting || entity?.description) ?? '';
-
-  const conversationId = conversation?.conversationId;
-  const isNewConversation = !conversationId || conversationId === Constants.NEW_CONVO;
 
   const getGreeting = useCallback(() => {
     if (typeof startupConfig?.interface?.customWelcome === 'string') {
@@ -209,7 +205,6 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(description || '') }}
           />
         )}
-        {isNewConversation && <AgentSelectorDropdown />}
       </div>
     </div>
   );
