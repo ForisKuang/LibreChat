@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChevronDown } from 'lucide-react';
 import { TooltipAnchor } from '@librechat/client';
 import { getConfigDefaults } from 'librechat-data-provider';
 import type { ModelSelectorProps } from '~/common';
@@ -67,6 +68,7 @@ function ModelSelectorContent() {
             </div>
           )}
           <span className="flex-grow truncate text-left">{selectedDisplayValue}</span>
+          <ChevronDown className="h-4 w-4 flex-shrink-0 opacity-50" />
         </button>
       }
     />
