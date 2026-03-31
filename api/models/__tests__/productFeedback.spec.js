@@ -35,9 +35,7 @@ describe('ProductFeedback Model', () => {
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     const mongoUri = mongoServer.getUri();
-    ProductFeedback =
-      mongoose.models.ProductFeedback ||
-      mongoose.model('ProductFeedback', productFeedbackSchema);
+    ProductFeedback = mongoose.models.ProductFeedback || mongoose.model('ProductFeedback', productFeedbackSchema);
     await mongoose.connect(mongoUri);
   });
 
