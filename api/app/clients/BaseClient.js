@@ -334,7 +334,7 @@ class BaseClient {
   }
 
   async handleTokenCountMap(tokenCountMap) {
-    if (this.clientName === EModelEndpoint.agents) {
+    if (this.clientName === EModelEndpoint.agents && !this.shouldSummarize) {
       return;
     }
     if (this.currentMessages.length === 0) {
@@ -506,7 +506,7 @@ class BaseClient {
       shouldSummarize &&
       diff === 1 &&
       firstMessage?.summary &&
-      this.previous_summary.messageId === firstMessage.messageId;
+      this.previous_summary?.messageId === firstMessage.messageId;
 
     if (diff > 0) {
       payload = formattedMessages.slice(diff);
