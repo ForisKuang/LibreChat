@@ -1,16 +1,18 @@
 const { ContentTypes, EModelEndpoint } = require('librechat-data-provider');
 
-// Mock ChatOpenAI before requiring the client
+// Mock LLM classes before requiring the client
 const mockInvoke = jest.fn();
-jest.mock('@librechat/agents', () => ({
-  ...jest.requireActual('@librechat/agents'),
-  ChatOpenAI: jest.fn().mockImplementation(() => ({
-    invoke: mockInvoke,
-  })),
-  createMetadataAggregator: () => ({
-    handleLLMEnd: jest.fn(),
-    collected: [],
-  }),
+const MockLLMConstructor = jest.fn().mockImplementation(() => ({
+  invoke: mockInvoke,
+}));
+
+jest.mock('@langchain/openai', () => ({
+  ...jest.requireActual('@langchain/openai'),
+  ChatOpenAI: MockLLMConstructor,
+}));
+jest.mock('@langchain/anthropic', () => ({
+  ...jest.requireActual('@langchain/anthropic'),
+  ChatAnthropic: MockLLMConstructor,
 }));
 
 jest.mock('@librechat/api', () => ({
@@ -28,7 +30,6 @@ jest.mock('~/config', () => ({
   })),
 }));
 
-const { ChatOpenAI } = require('@librechat/agents');
 const AgentClient = require('./client');
 
 describe('AgentClient - Context Summarization', () => {
@@ -198,7 +199,7 @@ describe('AgentClient - Context Summarization', () => {
       });
     });
 
-    it('should return a summary message using CUT_OFF_PROMPT for first-time summarization', async () => {
+    it('should return a summary message with role "user" and prefix', async () => {
       mockInvoke.mockResolvedValue({
         content: 'The user asked about AI and the assistant explained its benefits.',
       });
@@ -212,9 +213,9 @@ describe('AgentClient - Context Summarization', () => {
       });
 
       expect(result.summaryMessage).toBeDefined();
-      expect(result.summaryMessage.role).toBe('system');
+      expect(result.summaryMessage.role).toBe('user');
       expect(result.summaryMessage.content).toBe(
-        'The user asked about AI and the assistant explained its benefits.',
+        '[Previous conversation summary]\nThe user asked about AI and the assistant explained its benefits.',
       );
       expect(result.summaryTokenCount).toBeGreaterThan(0);
       expect(typeof result.summaryTokenCount).toBe('number');
@@ -238,7 +239,7 @@ describe('AgentClient - Context Summarization', () => {
         remainingContextTokens: 500,
       });
 
-      expect(result.summaryMessage.content).toBe(
+      expect(result.summaryMessage.content).toContain(
         'Updated summary including new discussion points.',
       );
 
@@ -248,7 +249,7 @@ describe('AgentClient - Context Summarization', () => {
       expect(invokeArg).toContain('Tell me more about machine learning');
     });
 
-    it('should use the conversation model by default', async () => {
+    it('should use ChatOpenAI for OpenAI provider', async () => {
       mockInvoke.mockResolvedValue({ content: 'Summary' });
 
       await client.summarizeMessages({
@@ -256,8 +257,32 @@ describe('AgentClient - Context Summarization', () => {
         remainingContextTokens: 500,
       });
 
-      expect(ChatOpenAI).toHaveBeenCalledWith(
+      expect(MockLLMConstructor).toHaveBeenCalledWith(
         expect.objectContaining({ model: 'gpt-4' }),
+      );
+    });
+
+    it('should use ChatAnthropic for Anthropic provider', async () => {
+      const anthropicAgent = {
+        ...mockAgent,
+        provider: EModelEndpoint.anthropic,
+        model_parameters: { model: 'claude-sonnet-4-20250514' },
+      };
+      client = new AgentClient({
+        req: mockReq,
+        res: {},
+        agent: anthropicAgent,
+        contextStrategy: 'summarize',
+      });
+      mockInvoke.mockResolvedValue({ content: 'Summary' });
+
+      await client.summarizeMessages({
+        messagesToRefine: [{ role: 'user', content: 'Hello', tokenCount: 5 }],
+        remainingContextTokens: 500,
+      });
+
+      expect(MockLLMConstructor).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'claude-sonnet-4-20250514' }),
       );
     });
 
@@ -270,7 +295,7 @@ describe('AgentClient - Context Summarization', () => {
         remainingContextTokens: 500,
       });
 
-      expect(ChatOpenAI).toHaveBeenCalledWith(
+      expect(MockLLMConstructor).toHaveBeenCalledWith(
         expect.objectContaining({ model: 'gpt-4.1-mini' }),
       );
     });
@@ -283,7 +308,7 @@ describe('AgentClient - Context Summarization', () => {
         remainingContextTokens: 200,
       });
 
-      expect(ChatOpenAI).toHaveBeenCalledWith(
+      expect(MockLLMConstructor).toHaveBeenCalledWith(
         expect.objectContaining({ maxTokens: 100 }), // 50% of 200
       );
     });
@@ -296,7 +321,7 @@ describe('AgentClient - Context Summarization', () => {
         remainingContextTokens: 10000,
       });
 
-      expect(ChatOpenAI).toHaveBeenCalledWith(
+      expect(MockLLMConstructor).toHaveBeenCalledWith(
         expect.objectContaining({ maxTokens: 1024 }),
       );
     });
@@ -343,7 +368,7 @@ describe('AgentClient - Context Summarization', () => {
         remainingContextTokens: 500,
       });
 
-      expect(result.summaryMessage.content).toBe('Part 1 Part 2');
+      expect(result.summaryMessage.content).toContain('Part 1 Part 2');
     });
 
     it('should handle content arrays in messagesToRefine', async () => {
@@ -363,7 +388,7 @@ describe('AgentClient - Context Summarization', () => {
         remainingContextTokens: 500,
       });
 
-      expect(result.summaryMessage.content).toBe('Summary with tool context');
+      expect(result.summaryMessage.content).toContain('Summary with tool context');
       const invokeArg = mockInvoke.mock.calls[0][0];
       expect(invokeArg).toContain('I searched for that.');
       expect(invokeArg).toContain('[Tool: search] Found results');

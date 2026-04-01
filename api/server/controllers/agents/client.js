@@ -28,7 +28,6 @@ const {
   Callback,
   Providers,
   TitleMethod,
-  ChatOpenAI,
   formatMessage,
   formatAgentMessages,
   createMetadataAggregator,
@@ -50,6 +49,8 @@ const { createContextHandlers } = require('~/app/clients/prompts');
 const { getConvoFiles } = require('~/models/Conversation');
 const BaseClient = require('~/app/clients/BaseClient');
 const { SUMMARY_PROMPT, CUT_OFF_PROMPT } = require('~/app/clients/prompts/summaryPrompts');
+const { ChatOpenAI } = require('@langchain/openai');
+const { ChatAnthropic } = require('@langchain/anthropic');
 const { getRoleByName } = require('~/models/Role');
 const { loadAgent } = require('~/models/Agent');
 const { getMCPManager } = require('~/config');
@@ -1298,12 +1299,25 @@ class AgentClient extends BaseClient {
       }
 
       const model = this.summaryModel ?? this.options.agent.model_parameters.model;
-      const llm = new ChatOpenAI({
-        model,
-        temperature: 0.2,
-        streaming: false,
-        maxTokens: Math.min(1024, Math.floor(remainingContextTokens * 0.5)),
-      });
+      const provider = this.options.agent.provider;
+      const maxTokens = Math.min(1024, Math.floor(remainingContextTokens * 0.5));
+
+      let llm;
+      if (provider === EModelEndpoint.anthropic) {
+        llm = new ChatAnthropic({
+          model,
+          temperature: 0.2,
+          streaming: false,
+          maxTokens,
+        });
+      } else {
+        llm = new ChatOpenAI({
+          model,
+          temperature: 0.2,
+          streaming: false,
+          maxTokens,
+        });
+      }
 
       const response = await llm.invoke(prompt);
       const summaryText =
@@ -1325,7 +1339,7 @@ class AgentClient extends BaseClient {
       });
 
       return {
-        summaryMessage: { role: 'system', content: summaryText },
+        summaryMessage: { role: 'user', content: `[Previous conversation summary]\n${summaryText}` },
         summaryTokenCount,
       };
     } catch (error) {

@@ -537,16 +537,36 @@ class BaseClient {
     }
 
     if (usePrevSummary) {
-      summaryMessage = { role: 'system', content: firstMessage.summary };
+      const summaryRole = this.clientName === EModelEndpoint.agents ? 'user' : 'system';
+      const summaryContent = this.clientName === EModelEndpoint.agents
+        ? `[Previous conversation summary]\n${firstMessage.summary}`
+        : firstMessage.summary;
+      summaryMessage = { role: summaryRole, content: summaryContent };
       summaryTokenCount = firstMessage.summaryTokenCount;
-      payload.unshift(summaryMessage);
+      if (this.clientName === EModelEndpoint.agents) {
+        payload.unshift(
+          summaryMessage,
+          { role: 'assistant', content: 'Understood, I have the context from our previous conversation.' },
+        );
+      } else {
+        payload.unshift(summaryMessage);
+      }
       remainingContextTokens -= summaryTokenCount;
     } else if (shouldSummarize && messagesToRefine.length > 0) {
       ({ summaryMessage, summaryTokenCount } = await this.summarizeMessages({
         messagesToRefine,
         remainingContextTokens,
       }));
-      summaryMessage && payload.unshift(summaryMessage);
+      if (summaryMessage) {
+        if (this.clientName === EModelEndpoint.agents) {
+          payload.unshift(
+            summaryMessage,
+            { role: 'assistant', content: 'Understood, I have the context from our previous conversation.' },
+          );
+        } else {
+          payload.unshift(summaryMessage);
+        }
+      }
       remainingContextTokens -= summaryTokenCount;
     }
 
