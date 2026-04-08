@@ -779,7 +779,7 @@ class AgentClient extends BaseClient {
         configurable: {
           thread_id: this.conversationId,
           last_agent_index: this.agentConfigs?.size ?? 0,
-          user_id: this.user ?? this.options.req.user?.id,
+          user_id: this.options.req.user?.email ?? this.user ?? this.options.req.user?.id,
           agent_id: this.options.agent.id,
           agent_name: this.options.agent.name,
           hide_sequential_outputs: this.options.agent.hide_sequential_outputs,
@@ -1117,7 +1117,7 @@ class AgentClient extends BaseClient {
           ],
           configurable: {
             thread_id: this.conversationId,
-            user_id: this.user ?? this.options.req.user?.id,
+            user_id: this.options.req.user?.email ?? this.user ?? this.options.req.user?.id,
           },
         },
       });
