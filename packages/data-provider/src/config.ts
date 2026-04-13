@@ -291,6 +291,8 @@ export const agentsEndpointSchema = baseEndpointSchema
         .array(z.nativeEnum(AgentCapabilities))
         .optional()
         .default(defaultAgentCapabilities),
+      contextStrategy: z.enum(['discard', 'summarize']).optional().default('discard'),
+      summaryModel: z.string().optional(),
     }),
   )
   .default({

@@ -48,6 +48,9 @@ const { encodeAndFormat } = require('~/server/services/Files/images/encode');
 const { createContextHandlers } = require('~/app/clients/prompts');
 const { getConvoFiles } = require('~/models/Conversation');
 const BaseClient = require('~/app/clients/BaseClient');
+const { SUMMARY_PROMPT, CUT_OFF_PROMPT } = require('~/app/clients/prompts/summaryPrompts');
+const { ChatOpenAI } = require('@langchain/openai');
+const { ChatAnthropic } = require('@langchain/anthropic');
 const { getRoleByName } = require('~/models/Role');
 const { loadAgent } = require('~/models/Agent');
 const { getMCPManager } = require('~/config');
@@ -61,7 +64,13 @@ class AgentClient extends BaseClient {
     this.clientName = EModelEndpoint.agents;
 
     /** @type {'discard' | 'summarize'} */
-    this.contextStrategy = 'discard';
+    this.contextStrategy = options.contextStrategy ?? 'discard';
+
+    /** @type {boolean} */
+    this.shouldSummarize = this.contextStrategy === 'summarize';
+
+    /** @type {string | null} */
+    this.summaryModel = options.summaryModel ?? null;
 
     /** @deprecated @type {true} - Is a Chat Completion Request */
     this.isChatCompletion = true;
@@ -75,6 +84,8 @@ class AgentClient extends BaseClient {
       collectedUsage,
       artifactPromises,
       maxContextTokens,
+      contextStrategy: _contextStrategy,
+      summaryModel: _summaryModel,
       ...clientOptions
     } = options;
 
@@ -1222,6 +1233,119 @@ class AgentClient extends BaseClient {
 
   getEncoding() {
     return 'o200k_base';
+  }
+
+  /**
+   * Concatenates messages into a single string for summarization.
+   * Overrides BaseClient to handle agent content arrays (tool calls, think blocks, etc.).
+   * @param {Array<{name?: string, role?: string, content: string | Array}>} messages
+   * @returns {string}
+   */
+  concatenateMessages(messages) {
+    return messages.reduce((acc, message) => {
+      const nameOrRole = message.name ?? message.role;
+      let content;
+      if (typeof message.content === 'string') {
+        content = message.content;
+      } else if (Array.isArray(message.content)) {
+        content = message.content
+          .map((part) => {
+            if (part.type === ContentTypes.TEXT) {
+              return part[ContentTypes.TEXT] ?? part.text ?? '';
+            }
+            if (part.type === ContentTypes.TOOL_CALL) {
+              const name = part.name ?? part[ContentTypes.TOOL_CALL]?.name ?? 'tool';
+              const output = part.output ?? part[ContentTypes.TOOL_CALL]?.output ?? '';
+              return `[Tool: ${name}] ${output}`;
+            }
+            return '';
+          })
+          .filter(Boolean)
+          .join('\n');
+      } else {
+        content = String(message.content ?? '');
+      }
+      return acc + `${nameOrRole}:\n${content}\n\n`;
+    }, '');
+  }
+
+  /**
+   * Generates a summary of pruned messages using an LLM call.
+   * Called by BaseClient.handleContextStrategy() when shouldSummarize is true
+   * and messages have been pruned from the context window.
+   *
+   * @param {Object} params
+   * @param {TMessage[]} params.messagesToRefine - Messages that were pruned from context
+   * @param {number} params.remainingContextTokens - Remaining tokens available in context
+   * @returns {Promise<{summaryMessage?: {role: string, content: string}, summaryTokenCount?: number}>}
+   */
+  async summarizeMessages({ messagesToRefine, remainingContextTokens }) {
+    try {
+      const newLines = this.concatenateMessages(messagesToRefine);
+      if (!newLines.trim()) {
+        return {};
+      }
+
+      let prompt;
+      if (this.previous_summary?.content) {
+        prompt = await SUMMARY_PROMPT.format({
+          summary: this.previous_summary.content,
+          new_lines: newLines,
+        });
+      } else {
+        prompt = await CUT_OFF_PROMPT.format({
+          new_lines: newLines,
+        });
+      }
+
+      const model = this.summaryModel ?? this.options.agent.model_parameters.model;
+      const provider = this.options.agent.provider;
+      const maxTokens = Math.min(1024, Math.floor(remainingContextTokens * 0.5));
+
+      let llm;
+      if (provider === EModelEndpoint.anthropic) {
+        llm = new ChatAnthropic({
+          model,
+          temperature: 0.2,
+          streaming: false,
+          maxTokens,
+        });
+      } else {
+        llm = new ChatOpenAI({
+          model,
+          temperature: 0.2,
+          streaming: false,
+          maxTokens,
+        });
+      }
+
+      const response = await llm.invoke(prompt);
+      const summaryText =
+        typeof response.content === 'string'
+          ? response.content
+          : response.content?.map?.((p) => p.text ?? '').join('') ?? '';
+
+      if (!summaryText) {
+        logger.warn('[AgentClient] summarizeMessages returned empty summary');
+        return {};
+      }
+
+      const summaryTokenCount = this.getTokenCount(summaryText);
+
+      logger.debug('[AgentClient] Generated context summary', {
+        prunedMessages: messagesToRefine.length,
+        summaryTokenCount,
+        hasPreviousSummary: !!this.previous_summary,
+      });
+
+      return {
+        summaryMessage: { role: 'user', content: `[Previous conversation summary]\n${summaryText}` },
+        summaryTokenCount,
+      };
+    } catch (error) {
+      logger.error('[AgentClient] Failed to summarize messages, falling back to discard', error);
+      return {};
+    }
   }
 
   /**

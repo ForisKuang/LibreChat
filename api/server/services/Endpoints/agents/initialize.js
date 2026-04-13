@@ -363,6 +363,7 @@ const initializeClient = async ({ req, res, signal, endpointOption }) => {
   primaryConfig.edges = edges;
 
   let endpointConfig = appConfig.endpoints?.[primaryConfig.endpoint];
+  const agentsConfig = appConfig.endpoints?.[EModelEndpoint.agents];
   if (!isAgentsEndpoint(primaryConfig.endpoint) && !endpointConfig) {
     try {
       endpointConfig = getCustomEndpointConfig({
@@ -403,6 +404,8 @@ const initializeClient = async ({ req, res, signal, endpointOption }) => {
     endpointType: endpointOption.endpointType,
     resendFiles: primaryConfig.resendFiles ?? true,
     maxContextTokens: primaryConfig.maxContextTokens,
+    contextStrategy: agentsConfig?.contextStrategy ?? endpointConfig?.contextStrategy,
+    summaryModel: agentsConfig?.summaryModel ?? endpointConfig?.summaryModel,
     endpoint: isEphemeralAgentId(primaryConfig.id) ? primaryConfig.endpoint : EModelEndpoint.agents,
   });
 
