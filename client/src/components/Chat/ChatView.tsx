@@ -9,6 +9,7 @@ import type { ChatFormValues } from '~/common';
 import { ChatContext, AddedChatContext, useFileMapContext, ChatFormProvider } from '~/Providers';
 import { useAddedResponse, useResumeOnLoad, useAdaptiveSSE, useChatHelpers } from '~/hooks';
 import ConversationStarters from './Input/ConversationStarters';
+import LimitBadge from './Input/LimitBadge';
 import { useGetMessagesByConvoId } from '~/data-provider';
 import MessagesView from './Messages/MessagesView';
 import Presentation from './Presentation';
@@ -100,6 +101,7 @@ function ChatView({ index = 0 }: { index?: number }) {
                     )}
                   >
                     <ChatForm index={index} />
+                    {isLandingPage && <LimitBadge />}
                     {isLandingPage ? <ConversationStarters /> : <Footer />}
                   </div>
                 </div>
