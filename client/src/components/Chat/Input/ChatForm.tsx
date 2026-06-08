@@ -211,7 +211,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
           (conversationId == null || conversationId === Constants.NEW_CONVO) &&
           !isSubmitting &&
           conversation?.messages?.length === 0
-          ? 'transition-all duration-200 sm:mb-28'
+          ? 'transition-all duration-200 sm:mb-6'
           : 'sm:mb-10',
       )}
     >
