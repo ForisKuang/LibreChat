@@ -104,6 +104,7 @@
   },
   "homepage": "https://librechat.ai/",
   "dependencies": {
+    "dd-trace": "^5"
     "dompurify": "^3.2.6"
   },
   "devDependencies": {
