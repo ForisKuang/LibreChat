@@ -1,5 +1,39 @@
 import { useMemo, useCallback, useState } from 'react';
-import { ChevronDown, HeartPulse, MapPin, Search } from 'lucide-react';
+import {
+  Activity,
+  Atom,
+  BarChart3,
+  Beaker,
+  Book,
+  BookOpen,
+  Brain,
+  ChevronDown,
+  Compass,
+  Database,
+  Dna,
+  FileText,
+  FlaskConical,
+  Folder,
+  Heart,
+  HeartPulse,
+  HelpCircle,
+  Info,
+  LineChart,
+  Lightbulb,
+  Map as MapIcon,
+  MapPin,
+  Microscope,
+  Navigation as NavigationIcon,
+  PieChart,
+  Search,
+  Server,
+  Sparkles,
+  Stethoscope,
+  Target,
+  Telescope,
+  TestTube,
+  Zap,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EModelEndpoint, Constants } from 'librechat-data-provider';
 import type { TModelSpec } from 'librechat-data-provider';
@@ -13,14 +47,62 @@ import { getIconEndpoint, getEntity } from '~/utils';
 import { cn } from '~/utils/';
 import { useSubmitMessage } from '~/hooks';
 
+// Curated set of icons available to conversation-starter categories.
+// Named imports keep lucide-react tree-shaken; an earlier `import *`
+// pulled the whole library into the http-client chunk and caused a
+// circular-init TDZ crash in production. `Map`/`Navigation` are aliased
+// so they don't shadow JS globals at module scope.
 const categoryIcons: Record<string, LucideIcon> = {
-  analyze: HeartPulse,
-  heartbeat: HeartPulse,
-  map: MapPin,
-  navigate: MapPin,
-  search: Search,
-  explore: Search,
+  Activity,
+  Atom,
+  BarChart3,
+  Beaker,
+  Book,
+  BookOpen,
+  Brain,
+  Compass,
+  Database,
+  Dna,
+  FileText,
+  FlaskConical,
+  Folder,
+  Heart,
+  HeartPulse,
+  HelpCircle,
+  Info,
+  LineChart,
+  Lightbulb,
+  Map: MapIcon,
+  MapPin,
+  Microscope,
+  Navigation: NavigationIcon,
+  PieChart,
+  Search,
+  Server,
+  Sparkles,
+  Stethoscope,
+  Target,
+  Telescope,
+  TestTube,
+  Zap,
 };
+
+function toPascalCase(name: string): string {
+  return name
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join('');
+}
+
+function resolveCategoryIcon(name?: string | null): LucideIcon | null {
+  if (!name) return null;
+  for (const key of [name, toPascalCase(name)]) {
+    const icon = categoryIcons[key];
+    if (icon) return icon;
+  }
+  return null;
+}
 
 const ConversationStarters = () => {
   const { conversation } = useChatContext();
@@ -128,8 +210,8 @@ const ConversationStarters = () => {
             {conversationStarterCategories.map((category) => {
               const isExpanded = expandedCategories.has(category.label);
               const Icon =
-                categoryIcons[category.icon?.toLowerCase() ?? ''] ??
-                categoryIcons[category.label.split(' ')[0]?.toLowerCase() ?? ''] ??
+                resolveCategoryIcon(category.icon) ??
+                resolveCategoryIcon(category.label.split(' ')[0]) ??
                 Search;
 
               return (
