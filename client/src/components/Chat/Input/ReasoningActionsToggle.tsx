@@ -9,9 +9,7 @@ export default function ReasoningActionsToggle() {
   const localize = useLocalize();
   const [showReasoningActions, setShowReasoningActions] = useAtom(showReasoningActionsAtom);
   const label = localize(
-    showReasoningActions
-      ? 'com_ui_hide_reasoning_actions'
-      : 'com_ui_show_reasoning_actions',
+    showReasoningActions ? 'com_ui_hide_reasoning_actions' : 'com_ui_show_reasoning_actions',
   );
 
   return (
@@ -26,9 +24,7 @@ export default function ReasoningActionsToggle() {
           onClick={() => setShowReasoningActions((prev) => !prev)}
           className={cn(
             'flex size-9 items-center justify-center rounded-full p-1 transition-colors hover:bg-surface-hover',
-            showReasoningActions
-              ? 'bg-surface-hover text-text-primary'
-              : 'text-text-secondary',
+            showReasoningActions ? 'bg-surface-hover text-text-primary' : 'text-text-secondary',
           )}
           title={label}
         >

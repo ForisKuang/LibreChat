@@ -217,9 +217,7 @@ export default function ToolCall({
                 ? localize('com_assistants_running_var', { 0: function_name })
                 : localize('com_assistants_running_action')
             }
-            authText={
-              authDomain.length > 0 ? localize('com_ui_requires_auth') : undefined
-            }
+            authText={authDomain.length > 0 ? localize('com_ui_requires_auth') : undefined}
             finishedText={getFinishedText()}
             hasInput={false}
             error={cancelled}

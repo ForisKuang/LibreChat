@@ -145,7 +145,10 @@ const Part = memo(
             />
           );
         }
-        if (toolCall.type === ToolCallTypes.RETRIEVAL || toolCall.type === ToolCallTypes.FILE_SEARCH) {
+        if (
+          toolCall.type === ToolCallTypes.RETRIEVAL ||
+          toolCall.type === ToolCallTypes.FILE_SEARCH
+        ) {
           return (
             <ToolCall
               initialProgress={toolCall.progress ?? 0.1}
