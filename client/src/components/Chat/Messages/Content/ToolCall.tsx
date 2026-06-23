@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { useAtomValue } from 'jotai';
 import { Button } from '@librechat/client';
 import { TriangleAlert } from 'lucide-react';
 import {
@@ -12,6 +13,7 @@ import { useLocalize, useProgress } from '~/hooks';
 import { AttachmentGroup } from './Parts';
 import ToolCallInfo from './ToolCallInfo';
 import ProgressText from './ProgressText';
+import { showReasoningActionsAtom } from '~/store/showReasoningActions';
 import { logger, cn } from '~/utils';
 
 export default function ToolCall({
@@ -35,11 +37,12 @@ export default function ToolCall({
   expires_at?: number;
 }) {
   const localize = useLocalize();
-  const [showInfo, setShowInfo] = useState(false);
+  const showReasoningActions = useAtomValue(showReasoningActionsAtom);
+  const [showInfo, setShowInfo] = useState(showReasoningActions);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | undefined>(0);
   const [isAnimating, setIsAnimating] = useState(false);
-  const prevShowInfoRef = useRef<boolean>(showInfo);
+  const prevShowInfoRef = useRef<boolean>(false);
 
   const { function_name, domain, isMCPToolCall, mcpServerName } = useMemo(() => {
     if (typeof name !== 'string') {
@@ -117,6 +120,7 @@ export default function ToolCall({
     () => (args?.length ?? 0) > 0 || (output?.length ?? 0) > 0,
     [args, output],
   );
+  const canShowInfo = showReasoningActions && hasInfo;
 
   const authDomain = useMemo(() => {
     const authURL = auth ?? '';
@@ -176,6 +180,10 @@ export default function ToolCall({
   }, [showInfo]);
 
   useEffect(() => {
+    setShowInfo(showReasoningActions);
+  }, [showReasoningActions]);
+
+  useEffect(() => {
     if (!contentRef.current) {
       return;
     }
@@ -198,6 +206,30 @@ export default function ToolCall({
     return null;
   }
 
+  if (!showReasoningActions) {
+    if (!cancelled && progress < 1) {
+      return (
+        <div className="relative my-2.5 flex h-5 shrink-0 items-center gap-2.5">
+          <ProgressText
+            progress={progress}
+            inProgressText={
+              function_name
+                ? localize('com_assistants_running_var', { 0: function_name })
+                : localize('com_assistants_running_action')
+            }
+            authText={
+              authDomain.length > 0 ? localize('com_ui_requires_auth') : undefined
+            }
+            finishedText={getFinishedText()}
+            hasInput={false}
+            error={cancelled}
+          />
+        </div>
+      );
+    }
+    return null;
+  }
+
   return (
     <>
       <div className="relative my-2.5 flex h-5 shrink-0 items-center gap-2.5">
@@ -213,7 +245,7 @@ export default function ToolCall({
             !cancelled && authDomain.length > 0 ? localize('com_ui_requires_auth') : undefined
           }
           finishedText={getFinishedText()}
-          hasInput={hasInfo}
+          hasInput={canShowInfo}
           isExpanded={showInfo}
           error={cancelled}
         />
@@ -246,7 +278,7 @@ export default function ToolCall({
           }}
         >
           <div ref={contentRef}>
-            {showInfo && hasInfo && (
+            {showInfo && canShowInfo && (
               <ToolCallInfo
                 key="tool-call-info"
                 input={args ?? ''}

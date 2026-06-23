@@ -1,9 +1,10 @@
-import { memo, useMemo, useState, useCallback, useRef } from 'react';
-import { useAtom } from 'jotai';
+import { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { useAtomValue } from 'jotai';
 import type { MouseEvent, FocusEvent } from 'react';
 import { ContentTypes } from 'librechat-data-provider';
 import { ThinkingContent, ThinkingButton, FloatingThinkingBar } from './Thinking';
 import { showThinkingAtom } from '~/store/showThinking';
+import { showReasoningActionsAtom } from '~/store/showReasoningActions';
 import { useMessageContext } from '~/Providers';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
@@ -37,8 +38,9 @@ type ReasoningProps = {
  */
 const Reasoning = memo(({ reasoning, isLast }: ReasoningProps) => {
   const localize = useLocalize();
-  const [showThinking] = useAtom(showThinkingAtom);
-  const [isExpanded, setIsExpanded] = useState(showThinking);
+  const showThinking = useAtomValue(showThinkingAtom);
+  const showReasoningActions = useAtomValue(showReasoningActionsAtom);
+  const [isExpanded, setIsExpanded] = useState(showReasoningActions || showThinking);
   const [isBarVisible, setIsBarVisible] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { isSubmitting, isLatestMessage, nextType } = useMessageContext();
@@ -77,6 +79,7 @@ const Reasoning = memo(({ reasoning, isLast }: ReasoningProps) => {
   }, []);
 
   const effectiveIsSubmitting = isLatestMessage ? isSubmitting : false;
+  const effectiveIsExpanded = showReasoningActions && isExpanded;
 
   const label = useMemo(
     () =>
@@ -84,7 +87,24 @@ const Reasoning = memo(({ reasoning, isLast }: ReasoningProps) => {
     [effectiveIsSubmitting, localize, isLast],
   );
 
+  useEffect(() => {
+    if (showReasoningActions) {
+      setIsExpanded(true);
+    }
+  }, [showReasoningActions]);
+
   if (!reasoningText) {
+    return null;
+  }
+
+  if (!showReasoningActions) {
+    if (effectiveIsSubmitting && isLast) {
+      return (
+        <div className="my-2.5 text-sm text-text-secondary">
+          <span className="shimmer">{label}</span>
+        </div>
+      );
+    }
     return null;
   }
 
@@ -100,7 +120,7 @@ const Reasoning = memo(({ reasoning, isLast }: ReasoningProps) => {
       <div className="group/thinking-container">
         <div className="mb-2 pb-2 pt-2">
           <ThinkingButton
-            isExpanded={isExpanded}
+            isExpanded={effectiveIsExpanded}
             onClick={handleClick}
             label={label}
             content={reasoningText}
@@ -109,17 +129,17 @@ const Reasoning = memo(({ reasoning, isLast }: ReasoningProps) => {
         <div
           className={cn(
             'grid transition-all duration-300 ease-out',
-            nextType !== ContentTypes.THINK && isExpanded && 'mb-4',
+            nextType !== ContentTypes.THINK && effectiveIsExpanded && 'mb-4',
           )}
           style={{
-            gridTemplateRows: isExpanded ? '1fr' : '0fr',
+            gridTemplateRows: effectiveIsExpanded ? '1fr' : '0fr',
           }}
         >
           <div className="relative overflow-hidden">
             <ThinkingContent>{reasoningText}</ThinkingContent>
             <FloatingThinkingBar
-              isVisible={isBarVisible && isExpanded}
-              isExpanded={isExpanded}
+              isVisible={isBarVisible && effectiveIsExpanded}
+              isExpanded={effectiveIsExpanded}
               onClick={handleClick}
               content={reasoningText}
             />

@@ -26,6 +26,7 @@ import { cn, removeFocusRings } from '~/utils';
 import TextareaHeader from './TextareaHeader';
 import PromptsCommand from './PromptsCommand';
 import AudioRecorder from './AudioRecorder';
+import ReasoningActionsToggle from './ReasoningActionsToggle';
 import CollapseChat from './CollapseChat';
 import StreamAudio from './StreamAudio';
 import StopButton from './StopButton';
@@ -341,6 +342,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                   isSubmitting={isSubmitting}
                 />
               )}
+              <ReasoningActionsToggle />
               <div className={`${isRTL ? 'ml-2' : 'mr-2'}`}>
                 {isSubmitting && showStopButton ? (
                   <StopButton stop={handleStopGenerating} setShowStopButton={setShowStopButton} />
