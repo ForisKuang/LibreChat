@@ -47,18 +47,27 @@ export async function initializeAnthropic({
       };
     }
   } else {
-    const isUserProvided = ANTHROPIC_API_KEY === 'user_provided';
+    const isEnvUserProvided = ANTHROPIC_API_KEY === 'user_provided';
 
-    const anthropicApiKey = isUserProvided
-      ? await db.getUserKey({ userId: req.user?.id ?? '', name: EModelEndpoint.anthropic })
-      : ANTHROPIC_API_KEY;
+    let anthropicApiKey: string | undefined;
+
+    try {
+      anthropicApiKey = await db.getUserKey({
+        userId: req.user?.id ?? '',
+        name: EModelEndpoint.anthropic,
+      });
+      if (expiresAt) {
+        checkUserKeyExpiry(expiresAt, EModelEndpoint.anthropic);
+      }
+    } catch {
+      if (isEnvUserProvided) {
+        throw new Error('Anthropic API key not provided. Please provide it again.');
+      }
+      anthropicApiKey = ANTHROPIC_API_KEY;
+    }
 
     if (!anthropicApiKey) {
       throw new Error('Anthropic API key not provided. Please provide it again.');
-    }
-
-    if (expiresAt && isUserProvided) {
-      checkUserKeyExpiry(expiresAt, EModelEndpoint.anthropic);
     }
 
     credentials[AuthKeys.ANTHROPIC_API_KEY] = anthropicApiKey;

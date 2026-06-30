@@ -43,17 +43,28 @@ export async function initializeOpenAI({
   const userProvidesURL = isUserProvided(baseURLOptions[endpoint as keyof typeof baseURLOptions]);
 
   let userValues: UserKeyValues | null = null;
-  if (expiresAt && (userProvidesKey || userProvidesURL)) {
+
+  // Try optional BYOK: load user key values when user has stored one, even if env key is set
+  try {
+    const optionalUserValues = await db.getUserKeyValues({ userId: req.user?.id ?? '', name: endpoint });
+    if (optionalUserValues?.apiKey) {
+      if (expiresAt) {
+        checkUserKeyExpiry(expiresAt, endpoint);
+      }
+      userValues = optionalUserValues;
+    }
+  } catch {
+    // No user key stored — fall through to server key below
+  }
+
+  // Required BYOK path: env var is USER_PROVIDED, so user must have set a key
+  if (!userValues && expiresAt && (userProvidesKey || userProvidesURL)) {
     checkUserKeyExpiry(expiresAt, endpoint);
     userValues = await db.getUserKeyValues({ userId: req.user?.id ?? '', name: endpoint });
   }
 
-  let apiKey = userProvidesKey
-    ? userValues?.apiKey
-    : credentials[endpoint as keyof typeof credentials];
-  const baseURL = userProvidesURL
-    ? userValues?.baseURL
-    : baseURLOptions[endpoint as keyof typeof baseURLOptions];
+  let apiKey = userValues?.apiKey ?? (userProvidesKey ? undefined : credentials[endpoint as keyof typeof credentials]);
+  const baseURL = userValues?.baseURL ?? (userProvidesURL ? undefined : baseURLOptions[endpoint as keyof typeof baseURLOptions]);
 
   const clientOptions: OpenAIConfigOptions = {
     proxy: PROXY ?? undefined,

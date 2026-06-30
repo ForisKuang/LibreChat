@@ -66,10 +66,17 @@ export function ProviderKeys() {
   const [selectedConfig, setSelectedConfig] = useState<TConfig | null>(null);
 
   const providerKeyEndpoints = useMemo<ProviderKeyEndpoint[]>(() => {
+    const byokCapable = new Set<string>([
+      EModelEndpoint.openAI,
+      EModelEndpoint.anthropic,
+      EModelEndpoint.google,
+      EModelEndpoint.azureOpenAI,
+    ]);
     return Object.entries(endpointsConfig ?? {})
       .filter((entry): entry is [string, TConfig] => {
-        const [, config] = entry;
-        return !!config?.userProvide;
+        const [endpoint, config] = entry;
+        if (!config) return false;
+        return byokCapable.has(endpoint) || !!config.userProvide;
       })
       .map(([endpoint, config]) => ({ endpoint, config }));
   }, [endpointsConfig]);
