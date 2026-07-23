@@ -1,9 +1,10 @@
-import { useState, useMemo, memo, useCallback, useRef, type MouseEvent } from 'react';
+import { useState, useMemo, memo, useCallback, useRef, useEffect, type MouseEvent } from 'react';
 import { useAtomValue } from 'jotai';
 import { Clipboard, CheckMark, TooltipAnchor } from '@librechat/client';
 import { Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
 import type { FocusEvent, FC } from 'react';
 import { showThinkingAtom } from '~/store/showThinking';
+import { showReasoningActionsAtom } from '~/store/showReasoningActions';
 import { fontSizeAtom } from '~/store/fontSize';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
@@ -237,9 +238,11 @@ export const FloatingThinkingBar = memo(
 const Thinking: React.ElementType = memo(({ children }: { children: React.ReactNode }) => {
   const localize = useLocalize();
   const showThinking = useAtomValue(showThinkingAtom);
-  const [isExpanded, setIsExpanded] = useState(showThinking);
+  const showReasoningActions = useAtomValue(showReasoningActionsAtom);
+  const [isExpanded, setIsExpanded] = useState(showReasoningActions || showThinking);
   const [isBarVisible, setIsBarVisible] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const effectiveIsExpanded = showReasoningActions && isExpanded;
 
   const handleClick = useCallback((e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -276,7 +279,17 @@ const Thinking: React.ElementType = memo(({ children }: { children: React.ReactN
     return '';
   }, [children]);
 
+  useEffect(() => {
+    if (showReasoningActions) {
+      setIsExpanded(true);
+    }
+  }, [showReasoningActions]);
+
   if (children == null) {
+    return null;
+  }
+
+  if (!showReasoningActions) {
     return null;
   }
 
@@ -291,23 +304,23 @@ const Thinking: React.ElementType = memo(({ children }: { children: React.ReactN
     >
       <div className="mb-4 pb-2 pt-2">
         <ThinkingButton
-          isExpanded={isExpanded}
+          isExpanded={effectiveIsExpanded}
           onClick={handleClick}
           label={label}
           content={textContent}
         />
       </div>
       <div
-        className={cn('grid transition-all duration-300 ease-out', isExpanded && 'mb-8')}
+        className={cn('grid transition-all duration-300 ease-out', effectiveIsExpanded && 'mb-8')}
         style={{
-          gridTemplateRows: isExpanded ? '1fr' : '0fr',
+          gridTemplateRows: effectiveIsExpanded ? '1fr' : '0fr',
         }}
       >
         <div className="relative overflow-hidden">
           <ThinkingContent>{children}</ThinkingContent>
           <FloatingThinkingBar
-            isVisible={isBarVisible && isExpanded}
-            isExpanded={isExpanded}
+            isVisible={isBarVisible && effectiveIsExpanded}
+            isExpanded={effectiveIsExpanded}
             onClick={handleClick}
             content={textContent}
           />

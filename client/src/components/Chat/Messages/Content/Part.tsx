@@ -7,12 +7,12 @@ import {
   isImageVisionTool,
 } from 'librechat-data-provider';
 import { memo } from 'react';
+import { useAtomValue } from 'jotai';
 import type { TMessageContentParts, TAttachment } from 'librechat-data-provider';
-import { OpenAIImageGen, EmptyText, Reasoning, ExecuteCode, AgentUpdate, Text } from './Parts';
+import { OpenAIImageGen, EmptyText, Reasoning, AgentUpdate, Text } from './Parts';
+import { showReasoningActionsAtom } from '~/store/showReasoningActions';
 import { ErrorMessage } from './MessageContent';
-import RetrievalCall from './RetrievalCall';
 import AgentHandoff from './AgentHandoff';
-import CodeAnalyze from './CodeAnalyze';
 import Container from './Container';
 import WebSearch from './WebSearch';
 import ToolCall from './ToolCall';
@@ -30,6 +30,8 @@ type PartProps = {
 
 const Part = memo(
   ({ part, isSubmitting, attachments, isLast, showCursor, isCreatedByUser }: PartProps) => {
+    const showReasoningActions = useAtomValue(showReasoningActionsAtom);
+
     if (!part) {
       return null;
     }
@@ -102,45 +104,135 @@ const Part = memo(
 
       const isToolCall =
         'args' in toolCall && (!toolCall.type || toolCall.type === ToolCallTypes.TOOL_CALL);
+      const isOpenAIImageGenerationTool =
+        isToolCall &&
+        (toolCall.name === 'image_gen_oai' ||
+          toolCall.name === 'image_edit_oai' ||
+          toolCall.name === 'gemini_image_gen');
+      const isLegacyImageGenerationTool =
+        toolCall.type === ToolCallTypes.FUNCTION &&
+        ToolCallTypes.FUNCTION in toolCall &&
+        imageGenTools.has(toolCall.function.name);
+      const isAgentHandoff = isToolCall && toolCall.name?.startsWith(Constants.LC_TRANSFER_TO_);
+
+      if (
+        !showReasoningActions &&
+        !isOpenAIImageGenerationTool &&
+        !isLegacyImageGenerationTool &&
+        !isAgentHandoff
+      ) {
+        if (isToolCall) {
+          return (
+            <ToolCall
+              args={toolCall.args ?? ''}
+              name={toolCall.name || ''}
+              output={toolCall.output ?? ''}
+              initialProgress={toolCall.progress ?? 0.1}
+              isSubmitting={isSubmitting}
+              attachments={attachments}
+              auth={toolCall.auth}
+              expires_at={toolCall.expires_at}
+              isLast={isLast}
+            />
+          );
+        }
+        if (toolCall.type === ToolCallTypes.CODE_INTERPRETER) {
+          const code_interpreter = toolCall[ToolCallTypes.CODE_INTERPRETER];
+          return (
+            <ToolCall
+              initialProgress={toolCall.progress ?? 0.1}
+              isSubmitting={isSubmitting}
+              args={code_interpreter.input}
+              name={ToolCallTypes.CODE_INTERPRETER}
+              output={JSON.stringify(code_interpreter.outputs ?? [], null, 2)}
+              isLast={isLast}
+            />
+          );
+        }
+        if (
+          toolCall.type === ToolCallTypes.RETRIEVAL ||
+          toolCall.type === ToolCallTypes.FILE_SEARCH
+        ) {
+          return (
+            <ToolCall
+              initialProgress={toolCall.progress ?? 0.1}
+              isSubmitting={isSubmitting}
+              args=""
+              name={toolCall.type}
+              output=""
+              isLast={isLast}
+            />
+          );
+        }
+        return null;
+      }
+
       if (
         isToolCall &&
         (toolCall.name === Tools.execute_code ||
           toolCall.name === Constants.PROGRAMMATIC_TOOL_CALLING)
       ) {
         return (
-          <ExecuteCode
-            attachments={attachments}
-            isSubmitting={isSubmitting}
+          <ToolCall
+            args={toolCall.args ?? ''}
+            name={toolCall.name || ''}
             output={toolCall.output ?? ''}
             initialProgress={toolCall.progress ?? 0.1}
-            args={typeof toolCall.args === 'string' ? toolCall.args : ''}
+            isSubmitting={isSubmitting}
+            attachments={attachments}
+            auth={toolCall.auth}
+            expires_at={toolCall.expires_at}
+            isLast={isLast}
           />
         );
-      } else if (
-        isToolCall &&
-        (toolCall.name === 'image_gen_oai' ||
-          toolCall.name === 'image_edit_oai' ||
-          toolCall.name === 'gemini_image_gen')
-      ) {
+      } else if (isOpenAIImageGenerationTool) {
         return (
-          <OpenAIImageGen
-            initialProgress={toolCall.progress ?? 0.1}
-            isSubmitting={isSubmitting}
-            toolName={toolCall.name}
-            args={typeof toolCall.args === 'string' ? toolCall.args : ''}
-            output={toolCall.output ?? ''}
-            attachments={attachments}
-          />
+          <>
+            {showReasoningActions && (
+              <ToolCall
+                args={toolCall.args ?? ''}
+                name={toolCall.name || ''}
+                output={toolCall.output ?? ''}
+                initialProgress={toolCall.progress ?? 0.1}
+                isSubmitting={isSubmitting}
+                attachments={attachments}
+                auth={toolCall.auth}
+                expires_at={toolCall.expires_at}
+                isLast={isLast}
+              />
+            )}
+            <OpenAIImageGen
+              initialProgress={toolCall.progress ?? 0.1}
+              isSubmitting={isSubmitting}
+              toolName={toolCall.name}
+              args={typeof toolCall.args === 'string' ? toolCall.args : ''}
+              output={toolCall.output ?? ''}
+              attachments={attachments}
+            />
+          </>
         );
       } else if (isToolCall && toolCall.name === Tools.web_search) {
         return (
-          <WebSearch
-            output={toolCall.output ?? ''}
-            initialProgress={toolCall.progress ?? 0.1}
-            isSubmitting={isSubmitting}
-            attachments={attachments}
-            isLast={isLast}
-          />
+          <>
+            <ToolCall
+              args={toolCall.args ?? ''}
+              name={toolCall.name || ''}
+              output={toolCall.output ?? ''}
+              initialProgress={toolCall.progress ?? 0.1}
+              isSubmitting={isSubmitting}
+              attachments={attachments}
+              auth={toolCall.auth}
+              expires_at={toolCall.expires_at}
+              isLast={isLast}
+            />
+            <WebSearch
+              output={toolCall.output ?? ''}
+              initialProgress={toolCall.progress ?? 0.1}
+              isSubmitting={isSubmitting}
+              attachments={attachments}
+              isLast={isLast}
+            />
+          </>
         );
       } else if (isToolCall && toolCall.name?.startsWith(Constants.LC_TRANSFER_TO_)) {
         return (
@@ -167,10 +259,13 @@ const Part = memo(
       } else if (toolCall.type === ToolCallTypes.CODE_INTERPRETER) {
         const code_interpreter = toolCall[ToolCallTypes.CODE_INTERPRETER];
         return (
-          <CodeAnalyze
+          <ToolCall
             initialProgress={toolCall.progress ?? 0.1}
-            code={code_interpreter.input}
-            outputs={code_interpreter.outputs ?? []}
+            isSubmitting={isSubmitting}
+            args={code_interpreter.input}
+            name={ToolCallTypes.CODE_INTERPRETER}
+            output={JSON.stringify(code_interpreter.outputs ?? [], null, 2)}
+            isLast={isLast}
           />
         );
       } else if (
@@ -178,7 +273,14 @@ const Part = memo(
         toolCall.type === ToolCallTypes.FILE_SEARCH
       ) {
         return (
-          <RetrievalCall initialProgress={toolCall.progress ?? 0.1} isSubmitting={isSubmitting} />
+          <ToolCall
+            initialProgress={toolCall.progress ?? 0.1}
+            isSubmitting={isSubmitting}
+            args=""
+            name={toolCall.type}
+            output=""
+            isLast={isLast}
+          />
         );
       } else if (
         toolCall.type === ToolCallTypes.FUNCTION &&
