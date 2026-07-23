@@ -4,6 +4,7 @@ import {
   resolveNestedObject,
   processMCPEnv,
   encodeHeaderValue,
+  createSafeUser,
 } from './env';
 import type { MCPOptions } from 'librechat-data-provider';
 import type { IUser } from '@librechat/data-schemas';
@@ -1611,5 +1612,90 @@ describe('processMCPEnv', () => {
         throw new Error('Expected streamable-http options');
       }
     });
+  });
+});
+
+describe('createSafeUser', () => {
+  it('copies allowed fields from a plain user object', () => {
+    const user = {
+      id: 'user-abc',
+      email: 'user@example.com',
+      name: 'Test User',
+      role: 'user',
+    } as unknown as IUser;
+
+    const safe = createSafeUser(user);
+    expect(safe.id).toBe('user-abc');
+    expect(safe.email).toBe('user@example.com');
+    expect(safe.name).toBe('Test User');
+    expect(safe.role).toBe('user');
+  });
+
+  it('falls back to _id when id is absent (session-deserialized plain object)', () => {
+    const objectId = new Types.ObjectId();
+    // Simulate a passport-deserialized plain object that has _id but no id virtual
+    const user = {
+      _id: objectId,
+      email: 'user@example.com',
+      name: 'Test User',
+      provider: 'local',
+      emailVerified: true,
+    } as unknown as IUser;
+
+    const safe = createSafeUser(user);
+    expect(safe.id).toBe(String(objectId));
+    expect(safe.email).toBe('user@example.com');
+  });
+
+  it('_id fallback works end-to-end: {{LIBRECHAT_USER_ID}} is substituted', () => {
+    const objectId = new Types.ObjectId();
+    const user = {
+      _id: objectId,
+      email: 'user@example.com',
+      name: 'Test User',
+      provider: 'local',
+      emailVerified: true,
+    } as unknown as IUser;
+
+    const safe = createSafeUser(user);
+
+    const options: MCPOptions = {
+      type: 'streamable-http',
+      url: 'http://mcp-server/mcp',
+      headers: {
+        'x-user-id': '{{LIBRECHAT_USER_ID}}',
+        'x-user-email': '{{LIBRECHAT_USER_EMAIL}}',
+      },
+    };
+
+    const result = processMCPEnv({ user: safe, options });
+    if (isStreamableHTTPOptions(result)) {
+      expect(result.headers?.['x-user-id']).toBe(String(objectId));
+      expect(result.headers?.['x-user-email']).toBe('user@example.com');
+    } else {
+      throw new Error('Expected streamable-http options');
+    }
+  });
+
+  it('returns empty object for null user', () => {
+    expect(createSafeUser(null)).toEqual({});
+  });
+
+  it('returns empty object for undefined user', () => {
+    expect(createSafeUser(undefined)).toEqual({});
+  });
+
+  it('does not override a valid id from the user object with _id fallback', () => {
+    const objectId = new Types.ObjectId();
+    const user = {
+      _id: objectId,
+      id: 'explicit-id',
+      email: 'user@example.com',
+      provider: 'local',
+      emailVerified: true,
+    } as unknown as IUser;
+
+    const safe = createSafeUser(user);
+    expect(safe.id).toBe('explicit-id');
   });
 });
