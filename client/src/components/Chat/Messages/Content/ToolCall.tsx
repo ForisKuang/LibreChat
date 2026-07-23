@@ -42,7 +42,7 @@ export default function ToolCall({
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | undefined>(0);
   const [isAnimating, setIsAnimating] = useState(false);
-  const prevShowInfoRef = useRef<boolean>(false);
+  const prevShowInfoRef = useRef<boolean>(showReasoningActions);
 
   const { function_name, domain, isMCPToolCall, mcpServerName } = useMemo(() => {
     if (typeof name !== 'string') {
