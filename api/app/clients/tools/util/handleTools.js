@@ -410,7 +410,7 @@ const loadTools = async ({
   /** MCP server tools are initialized sequentially by server */
   let index = -1;
   const failedMCPServers = new Set();
-  const safeUser = createSafeUser(options.req?.user);
+  const safeUser = createSafeUser(options.req?.user, user);
   for (const [serverName, toolConfigs] of Object.entries(requestedMCPTools)) {
     index++;
     /** @type {LCAvailableTools} */
