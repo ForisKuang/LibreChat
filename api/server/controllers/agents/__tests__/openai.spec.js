@@ -556,34 +556,33 @@ describe('OpenAIChatCompletionController', () => {
       expect(res.status).not.toHaveBeenCalledWith(400);
     });
 
-    it('applies the spec generation params to the agent it runs', async () => {
+    it.each([
+      ['generation params', { effort: 'low', maxOutputTokens: 4096 }],
+      ['thinking:false', { thinking: false }],
+    ])('forwards spec %s to withAgentModel and runs the merged agent', async (_label, params) => {
       const {
         initializeAgent,
         resolveRequestSpecModel,
         withAgentModel,
       } = require('@librechat/api');
       const { getAgent } = require('~/models');
-      const fetched = { ...storedAgent, model_parameters: { model: 'haiku', promptCache: true } };
+      const fetched = {
+        ...storedAgent,
+        model_parameters: {
+          model: 'haiku',
+          additionalModelRequestFields: { thinking: { type: 'enabled', budget_tokens: 2000 } },
+        },
+      };
       getAgent.mockResolvedValueOnce(fetched);
-      const params = { effort: 'low', maxOutputTokens: 4096 };
       resolveRequestSpecModel.mockReturnValueOnce({ ok: true, model: 'sonnet', params });
-      withAgentModel.mockImplementationOnce((agent, model, specParams) => ({
-        ...agent,
-        model,
-        model_parameters: { ...agent.model_parameters, ...specParams, model },
-      }));
-      withSpec('sonnet-low-spec');
+      const merged = { ...storedAgent, model: 'sonnet', model_parameters: { model: 'sonnet' } };
+      withAgentModel.mockReturnValueOnce(merged);
+      withSpec('spec-under-test');
 
       await OpenAIChatCompletionController(req, res);
 
       expect(withAgentModel).toHaveBeenCalledWith(fetched, 'sonnet', params);
-      expect(initializeAgent.mock.calls.at(-1)[0].agent.model_parameters).toEqual({
-        model: 'sonnet',
-        promptCache: true,
-        effort: 'low',
-        maxOutputTokens: 4096,
-      });
-      expect(fetched.model_parameters).toEqual({ model: 'haiku', promptCache: true });
+      expect(initializeAgent.mock.calls.at(-1)[0].agent).toBe(merged);
     });
 
     it('passes configured modelSpecs to the resolver', async () => {

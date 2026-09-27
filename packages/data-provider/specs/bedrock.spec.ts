@@ -334,13 +334,39 @@ describe('omitsSamplingParameters', () => {
     });
   });
 
-  test('returns false for older Opus and non-Opus models', () => {
+  test('returns true for Sonnet 5+ across API and Bedrock ID forms', () => {
+    const models = [
+      'claude-sonnet-5',
+      'claude-sonnet-5-20260630',
+      'claude-sonnet-5-5',
+      'anthropic.claude-sonnet-5',
+      'anthropic.claude-sonnet-5-v1:0',
+      'us.anthropic.claude-sonnet-5',
+      'eu.anthropic.claude-sonnet-5',
+      'au.anthropic.claude-sonnet-5',
+      'global.anthropic.claude-sonnet-5',
+      'global.anthropic.claude-sonnet-5-20260630-v1:0',
+      'anthropic.claude-5-sonnet',
+    ];
+
+    models.forEach((model) => {
+      expect(omitsSamplingParameters(model)).toBe(true);
+    });
+  });
+
+  test('returns false for older Opus, Sonnet 4.x and Haiku models', () => {
     const models = [
       'claude-opus-4-20250514',
       'anthropic.claude-opus-4-20250514-v1:0',
       'claude-opus-4-1-20250805',
       'claude-opus-4-6',
       'claude-sonnet-4-7',
+      'claude-sonnet-4-6',
+      'us.anthropic.claude-sonnet-4-6',
+      'anthropic.claude-sonnet-4-20250514-v1:0',
+      'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      'claude-haiku-4-5',
+      'us.anthropic.claude-haiku-4-5-20251001-v1:0',
     ];
 
     models.forEach((model) => {

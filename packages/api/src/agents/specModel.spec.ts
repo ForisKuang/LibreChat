@@ -7,6 +7,7 @@ import {
 } from 'librechat-data-provider';
 import {
   withAgentModel,
+  mergeSpecAgentParams,
   getModelSpecAgentModel,
   getModelSpecAgentParams,
   resolveRequestSpecModel,
@@ -210,6 +211,29 @@ describe('withAgentModel', () => {
     expect(agent.model_parameters).toEqual({ model: 'haiku', promptCache: true, effort: 'high' });
   });
 
+  it('strips thinking saved in additionalModelRequestFields when params set thinking:false', () => {
+    const agent = {
+      id: 'agent_1',
+      model: 'haiku',
+      model_parameters: {
+        model: 'haiku',
+        additionalModelRequestFields: {
+          thinking: { type: 'enabled', budget_tokens: 2000 },
+          top_k: 5,
+        },
+      },
+    };
+    expect(withAgentModel(agent, 'haiku', { thinking: false }).model_parameters).toEqual({
+      model: 'haiku',
+      thinking: false,
+      additionalModelRequestFields: { top_k: 5 },
+    });
+    expect(agent.model_parameters.additionalModelRequestFields.thinking).toEqual({
+      type: 'enabled',
+      budget_tokens: 2000,
+    });
+  });
+
   it('creates model_parameters for spec params when the agent has none', () => {
     expect(
       withAgentModel({ id: 'agent_1', model: 'haiku' }, 'sonnet', { thinking: false }),
@@ -221,33 +245,97 @@ describe('withAgentModel', () => {
   });
 });
 
+describe('mergeSpecAgentParams', () => {
+  const savedThinking = {
+    model: 'haiku',
+    thinkingBudget: 2000,
+    additionalModelRequestFields: {
+      thinking: { type: 'enabled', budget_tokens: 2000 },
+      thinkingBudget: 2000,
+      top_k: 5,
+    },
+  };
+
+  it('strips saved thinking config when the spec sets thinking:false', () => {
+    expect(mergeSpecAgentParams(savedThinking, { thinking: false }, 'haiku-2')).toEqual({
+      model: 'haiku-2',
+      thinking: false,
+      additionalModelRequestFields: { top_k: 5 },
+    });
+    expect(savedThinking.additionalModelRequestFields.thinking).toEqual({
+      type: 'enabled',
+      budget_tokens: 2000,
+    });
+  });
+
+  it('keeps saved thinking config when the spec omits thinking or sets it to null', () => {
+    expect(mergeSpecAgentParams(savedThinking, { maxOutputTokens: 1024 })).toEqual({
+      ...savedThinking,
+      maxOutputTokens: 1024,
+    });
+    expect(mergeSpecAgentParams(savedThinking, undefined, 'haiku')).toEqual(savedThinking);
+  });
+
+  it('handles agents without saved model_parameters', () => {
+    expect(mergeSpecAgentParams(undefined, { thinking: false }, 'haiku')).toEqual({
+      model: 'haiku',
+      thinking: false,
+    });
+  });
+});
+
 /**
- * End-to-end shape check: the merged model_parameters, as initializeAgent would
- * hand them to the Bedrock endpoint, produce the expected Converse fields.
+ * Parser-level shape check: runs merged model_parameters through
+ * bedrockInputParser/bedrockOutputParser (as the Bedrock endpoint does) and
+ * asserts the resulting Converse fields. Does not exercise initializeAgent.
  */
-describe('spec params through the Bedrock parsers', () => {
+describe('merged spec params through the Bedrock parsers', () => {
+  const haiku = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
+  const sonnet = 'us.anthropic.claude-sonnet-5';
+
   const toBedrock = (modelParameters: Record<string, unknown>) =>
     bedrockOutputParser(bedrockInputParser.parse(modelParameters)) as Record<string, unknown> & {
       additionalModelRequestFields?: Record<string, unknown>;
     };
 
-  const merged = (model: string, preset: Record<string, unknown>) =>
+  const merged = (
+    model: string,
+    preset: Record<string, unknown>,
+    saved: Record<string, unknown> = { promptCache: true },
+  ) =>
     withAgentModel(
-      { id: 'agent_1', model: 'stored', model_parameters: { model: 'stored', promptCache: true } },
+      { id: 'agent_1', model: 'stored', model_parameters: { model: 'stored', ...saved } },
       model,
       getModelSpecAgentParams({ id: 'agent_1' }, spec({ agent_id: 'agent_1', model, ...preset })),
     ).model_parameters as Record<string, unknown>;
 
   it('Haiku with thinking:false sends no thinking config', () => {
-    const haiku = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
     const llmConfig = toBedrock(merged(haiku, { thinking: false, maxOutputTokens: 2048 }));
     expect(llmConfig.model).toBe(haiku);
     expect(llmConfig.additionalModelRequestFields?.thinking).toBeUndefined();
     expect(llmConfig.maxTokens).toBe(2048);
   });
 
+  it('Haiku thinking:false overrides thinking saved in additionalModelRequestFields', () => {
+    const saved = {
+      additionalModelRequestFields: { thinking: { type: 'enabled', budget_tokens: 2000 } },
+    };
+    const llmConfig = toBedrock(merged(haiku, { thinking: false }, saved));
+    expect(llmConfig.additionalModelRequestFields?.thinking).toBeUndefined();
+    expect(llmConfig.additionalModelRequestFields?.thinkingBudget).toBeUndefined();
+  });
+
+  it('Haiku keeps saved nested thinking when the preset omits thinking', () => {
+    const saved = {
+      additionalModelRequestFields: { thinking: { type: 'enabled', budget_tokens: 2000 } },
+    };
+    const llmConfig = toBedrock(merged(haiku, { maxOutputTokens: 8192 }, saved));
+    expect(llmConfig.additionalModelRequestFields?.thinking).toEqual(
+      expect.objectContaining({ type: 'enabled' }),
+    );
+  });
+
   it('Sonnet 5 with effort:low sends output_config.effort=low with adaptive thinking', () => {
-    const sonnet = 'us.anthropic.claude-sonnet-5';
     const llmConfig = toBedrock(merged(sonnet, { effort: 'low', maxOutputTokens: 8192 }));
     expect(llmConfig.model).toBe(sonnet);
     expect(llmConfig.additionalModelRequestFields?.output_config).toEqual({ effort: 'low' });
@@ -255,5 +343,27 @@ describe('spec params through the Bedrock parsers', () => {
       expect.objectContaining({ type: 'adaptive' }),
     );
     expect(llmConfig.maxTokens).toBe(8192);
+  });
+
+  it('Sonnet 5 drops a saved temperature', () => {
+    const llmConfig = toBedrock(
+      merged(sonnet, { effort: 'low', maxOutputTokens: 8192 }, { temperature: 0.7 }),
+    );
+    expect(llmConfig).not.toHaveProperty('temperature');
+    expect(llmConfig.additionalModelRequestFields).not.toHaveProperty('temperature');
+    expect(llmConfig.additionalModelRequestFields?.output_config).toEqual({ effort: 'low' });
+  });
+
+  it('Sonnet 5 drops a preset temperature', () => {
+    const llmConfig = toBedrock(merged(sonnet, { temperature: 0.3 }));
+    expect(llmConfig).not.toHaveProperty('temperature');
+    expect(llmConfig.additionalModelRequestFields).not.toHaveProperty('temperature');
+  });
+
+  it('Haiku 4.5 keeps saved and preset temperature', () => {
+    expect(toBedrock(merged(haiku, { thinking: false }, { temperature: 0.7 })).temperature).toBe(
+      0.7,
+    );
+    expect(toBedrock(merged(haiku, { thinking: false, temperature: 0.3 })).temperature).toBe(0.3);
   });
 });

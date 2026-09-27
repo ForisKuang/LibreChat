@@ -9,6 +9,7 @@ const {
   GenerationJobManager,
   getCustomEndpointConfig,
   getModelSpecAgentModel,
+  mergeSpecAgentParams,
   getModelSpecAgentParams,
   discoverConnectedAgents,
   resolveAgentTokenConfig,
@@ -300,11 +301,11 @@ const initializeClient = async ({ req, res, signal, endpointOption }) => {
   }
   if (specModel || specParams) {
     /** Stored `model_parameters.model` outranks `agent.model` downstream, so pin it too */
-    primaryAgent.model_parameters = {
-      ...primaryAgent.model_parameters,
-      ...specParams,
-      ...(specModel && { model: specModel }),
-    };
+    primaryAgent.model_parameters = mergeSpecAgentParams(
+      primaryAgent.model_parameters,
+      specParams,
+      specModel,
+    );
   }
 
   const modelsConfig = await getModelsConfig(req);

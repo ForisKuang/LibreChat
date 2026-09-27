@@ -148,9 +148,19 @@ export function omitsThinkingByDefault(model: string): boolean {
   return false;
 }
 
+/**
+ * Checks if a model rejects non-default sampling parameters (`temperature`,
+ * `top_p`, `top_k`) with a 400: Opus 4.7+, Sonnet 5+, and Fable/Mythos.
+ *
+ * See https://platform.claude.com/docs/en/models/sonnet-5/migration-guide
+ */
 export function omitsSamplingParameters(model: string): boolean {
   const opus = parseOpusVersion(model);
   if (opus && (opus.major > 4 || (opus.major === 4 && opus.minor >= 7))) {
+    return true;
+  }
+  const sonnet = parseSonnetVersion(model);
+  if (sonnet != null && sonnet.major >= 5) {
     return true;
   }
   if (s.isMythosClassModel(model)) {

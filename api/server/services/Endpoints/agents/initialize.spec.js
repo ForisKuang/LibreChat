@@ -414,6 +414,47 @@ describe('initializeClient — processAgent ACL gate', () => {
       });
     });
 
+    it('strips thinking saved in additionalModelRequestFields when the spec sets thinking:false', async () => {
+      const endpointOption = makeEndpointOption();
+      endpointOption.spec = 'haiku-fast';
+      endpointOption.agent = Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'Primary',
+        provider: 'bedrock',
+        model: 'haiku',
+        model_parameters: {
+          model: 'haiku',
+          additionalModelRequestFields: {
+            thinking: { type: 'enabled', budget_tokens: 2000 },
+            thinkingBudget: 2000,
+            top_k: 5,
+          },
+        },
+        tools: [],
+      });
+      mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+      const req = makeReq();
+      req.config.modelSpecs = {
+        list: [
+          {
+            name: 'haiku-fast',
+            preset: { endpoint: 'agents', agent_id: PRIMARY_ID, model: 'haiku', thinking: false },
+          },
+        ],
+      };
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      expect(mockInitializeAgent.mock.calls[0][0].agent.model_parameters).toEqual({
+        model: 'haiku',
+        thinking: false,
+        additionalModelRequestFields: { top_k: 5 },
+      });
+    });
+
     it('leaves model_parameters untouched when the spec targets a different agent', async () => {
       const agent = await runWithSpec({
         spec: 'other',

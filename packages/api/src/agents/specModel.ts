@@ -62,6 +62,47 @@ export function getModelSpecAgentParams(
   return entries.length > 0 ? (Object.fromEntries(entries) as ModelSpecAgentParams) : undefined;
 }
 
+type ThinkingFields = { thinking?: unknown; thinkingBudget?: unknown };
+type SavedModelParameters = { thinkingBudget?: unknown; additionalModelRequestFields?: unknown };
+
+/** Drops `thinking`/`thinkingBudget` from a persisted Bedrock `additionalModelRequestFields` block */
+function omitSavedThinking(fields: unknown): unknown {
+  if (fields == null || typeof fields !== 'object') {
+    return fields;
+  }
+  const { thinking: _thinking, thinkingBudget: _budget, ...rest } = fields as ThinkingFields;
+  return rest;
+}
+
+/**
+ * Merges a spec's model and allowlisted params over an agent's saved
+ * model_parameters (see MODEL_SPEC_AGENT_PARAM_KEYS for precedence).
+ *
+ * An explicit `thinking: false` also strips any saved thinking config, since a
+ * persisted `additionalModelRequestFields.thinking` (e.g. `{ type: 'enabled',
+ * budget_tokens }`) is merged back into the Bedrock request downstream and
+ * would otherwise re-enable thinking.
+ */
+export function mergeSpecAgentParams<T extends object>(
+  modelParameters: T | null | undefined,
+  params: ModelSpecAgentParams | undefined,
+  model?: string,
+): T & ModelSpecAgentParams {
+  const merged = { ...modelParameters, ...params, ...(model && { model }) } as T &
+    ModelSpecAgentParams &
+    SavedModelParameters;
+  if (params?.thinking !== false) {
+    return merged;
+  }
+  const { thinkingBudget: _budget, additionalModelRequestFields, ...rest } = merged;
+  return {
+    ...rest,
+    ...(additionalModelRequestFields !== undefined && {
+      additionalModelRequestFields: omitSavedThinking(additionalModelRequestFields),
+    }),
+  } as T & ModelSpecAgentParams;
+}
+
 export type RequestSpecModelResult =
   | { ok: true; model?: string; params?: ModelSpecAgentParams }
   | { ok: false; error: string };
@@ -110,7 +151,7 @@ export function withAgentModel<T extends { model?: string | null; model_paramete
     ...agent,
     model,
     ...((agent.model_parameters != null || params != null) && {
-      model_parameters: { ...agent.model_parameters, ...params, model },
+      model_parameters: mergeSpecAgentParams(agent.model_parameters, params, model),
     }),
   };
 }
