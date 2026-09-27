@@ -199,7 +199,7 @@ const OpenAIChatCompletionController = async (req, res) => {
     );
   }
   const agent = specResolution.model
-    ? withAgentModel(storedAgent, specResolution.model)
+    ? withAgentModel(storedAgent, specResolution.model, specResolution.params)
     : storedAgent;
 
   if (specResolution.model) {

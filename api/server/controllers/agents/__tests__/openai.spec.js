@@ -556,6 +556,36 @@ describe('OpenAIChatCompletionController', () => {
       expect(res.status).not.toHaveBeenCalledWith(400);
     });
 
+    it('applies the spec generation params to the agent it runs', async () => {
+      const {
+        initializeAgent,
+        resolveRequestSpecModel,
+        withAgentModel,
+      } = require('@librechat/api');
+      const { getAgent } = require('~/models');
+      const fetched = { ...storedAgent, model_parameters: { model: 'haiku', promptCache: true } };
+      getAgent.mockResolvedValueOnce(fetched);
+      const params = { effort: 'low', maxOutputTokens: 4096 };
+      resolveRequestSpecModel.mockReturnValueOnce({ ok: true, model: 'sonnet', params });
+      withAgentModel.mockImplementationOnce((agent, model, specParams) => ({
+        ...agent,
+        model,
+        model_parameters: { ...agent.model_parameters, ...specParams, model },
+      }));
+      withSpec('sonnet-low-spec');
+
+      await OpenAIChatCompletionController(req, res);
+
+      expect(withAgentModel).toHaveBeenCalledWith(fetched, 'sonnet', params);
+      expect(initializeAgent.mock.calls.at(-1)[0].agent.model_parameters).toEqual({
+        model: 'sonnet',
+        promptCache: true,
+        effort: 'low',
+        maxOutputTokens: 4096,
+      });
+      expect(fetched.model_parameters).toEqual({ model: 'haiku', promptCache: true });
+    });
+
     it('passes configured modelSpecs to the resolver', async () => {
       const { resolveRequestSpecModel } = require('@librechat/api');
       const list = [{ name: 'sonnet-spec', preset: { agent_id: 'agent-123', model: 'sonnet' } }];

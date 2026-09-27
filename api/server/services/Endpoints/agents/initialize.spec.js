@@ -370,6 +370,64 @@ describe('initializeClient — processAgent ACL gate', () => {
       expect(agent.model).toBe('gpt-4');
     });
 
+    it('applies allowlisted spec params and pins model_parameters.model', async () => {
+      const endpointOption = makeEndpointOption();
+      endpointOption.spec = 'sonnet-low';
+      endpointOption.agent = Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'Primary',
+        provider: 'bedrock',
+        model: 'haiku',
+        model_parameters: { model: 'haiku', promptCache: true, effort: 'high' },
+        tools: [],
+      });
+      mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+      const req = makeReq();
+      req.config.modelSpecs = {
+        list: [
+          {
+            name: 'sonnet-low',
+            preset: {
+              endpoint: 'agents',
+              agent_id: PRIMARY_ID,
+              model: 'sonnet',
+              effort: 'low',
+              maxOutputTokens: 4096,
+              instructions: 'not a generation param',
+            },
+          },
+        ],
+      };
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      const agent = mockInitializeAgent.mock.calls[0][0].agent;
+      expect(agent.model).toBe('sonnet');
+      expect(agent.model_parameters).toEqual({
+        model: 'sonnet',
+        promptCache: true,
+        effort: 'low',
+        maxOutputTokens: 4096,
+      });
+    });
+
+    it('leaves model_parameters untouched when the spec targets a different agent', async () => {
+      const agent = await runWithSpec({
+        spec: 'other',
+        modelSpecs: [
+          {
+            name: 'other',
+            preset: { endpoint: 'agents', agent_id: 'agent_x', model: 'm', effort: 'low' },
+          },
+        ],
+      });
+      expect(agent.model).toBe('gpt-4');
+      expect(agent.model_parameters).toBeUndefined();
+    });
+
     it('ignores unknown spec names', async () => {
       const agent = await runWithSpec({
         spec: 'missing',
