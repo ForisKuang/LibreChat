@@ -54,24 +54,72 @@ describe('getModelSpecAgentModel', () => {
 });
 
 describe('getModelSpecAgentParams', () => {
-  it('warns about dropped keys without logging preset values or spec metadata', () => {
+  it('warns once about an unknown key without logging its value', () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
-    const params = getModelSpecAgentParams(
-      { id: 'agent_1' },
-      spec({
-        agent_id: 'agent_1',
-        model: 'haiku',
-        greeting: 'Welcome',
-        iconURL: 'https://example.com/icon.png',
-        maxTokens: 4096,
-        topP: 0.5,
-      }),
-    );
-    expect(params).toEqual({ maxTokens: 4096 });
+    const modelSpec = {
+      ...spec({ agent_id: 'agent_1', maxTokens: 4096, maxToken: 'secret-preset-value' }),
+      name: 'unknown-key-spec',
+    };
+    expect(getModelSpecAgentParams({ id: 'agent_1' }, modelSpec)).toEqual({ maxTokens: 4096 });
+    expect(getModelSpecAgentParams({ id: 'agent_1' }, modelSpec)).toEqual({ maxTokens: 4096 });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(
-      '[getModelSpecAgentParams] Model spec "spec" dropped preset key "topP": not allowlisted for agent overrides',
+      '[getModelSpecAgentParams] Model spec "unknown-key-spec" dropped preset key "maxToken": not allowlisted for agent overrides',
     );
+  });
+
+  it('does not warn on the deployed cBioDBAgent-style preset', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    expect(
+      getModelSpecAgentParams(
+        { id: 'agent_1' },
+        spec({
+          agent_id: 'agent_1',
+          endpoint: EModelEndpoint.agents,
+          greeting: 'Welcome to cBioDBAgent',
+          maxTokens: 4096,
+          modelLabel: 'cBioDBAgent',
+          temperature: 0,
+          thinking: false,
+        }),
+      ),
+    ).toEqual({ maxTokens: 4096, temperature: 0, thinking: false });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('recognizes preset display fields without forwarding them as agent parameters', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    expect(
+      getModelSpecAgentParams(
+        { id: 'agent_1' },
+        spec({
+          agent_id: 'agent_1',
+          modelLabel: 'cBioNavigator',
+          promptPrefix: 'Configured prompt',
+          iconURL: 'https://example.com/icon.png',
+          greeting: 'Welcome',
+          spec: 'navigator',
+          title: 'Navigator',
+          chatGptLabel: 'Legacy label',
+          maxTokens: 4096,
+        }),
+      ),
+    ).toEqual({ maxTokens: 4096 });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates separately for each spec name and unknown key', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    for (const name of ['dedupe-spec-a', 'dedupe-spec-b']) {
+      const modelSpec = {
+        ...spec({ agent_id: 'agent_1', unknownOne: 'private', unknownTwo: 'private' }),
+        name,
+      };
+      getModelSpecAgentParams({ id: 'agent_1' }, modelSpec);
+      getModelSpecAgentParams({ id: 'agent_1' }, modelSpec);
+    }
+    expect(warn).toHaveBeenCalledTimes(4);
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('private');
   });
 
   it('returns only allowlisted generation params from the spec preset', () => {

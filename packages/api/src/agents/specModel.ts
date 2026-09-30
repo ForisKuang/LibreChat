@@ -1,4 +1,5 @@
 import { logger } from '@librechat/data-schemas';
+import { tPresetSchema } from 'librechat-data-provider';
 import type { TModelSpec, TModelSpecPreset } from 'librechat-data-provider';
 
 /**
@@ -40,14 +41,9 @@ export const MODEL_SPEC_AGENT_PARAM_KEYS = [
   'promptCacheTtl',
 ] as const;
 
-const recognizedPresetKeys = new Set<string>([
-  'endpoint',
-  'agent_id',
-  'model',
-  'greeting',
-  'iconURL',
-  ...MODEL_SPEC_AGENT_PARAM_KEYS,
-]);
+/** The base modelSpec preset schema also recognizes UI fields such as title and spec. */
+const recognizedPresetKeys = new Set<string>(Object.keys(tPresetSchema.shape));
+const warnedPresetKeys = new Set<string>();
 
 export type ModelSpecAgentParams = Pick<
   TModelSpecPreset,
@@ -69,11 +65,17 @@ export function getModelSpecAgentParams(
     return undefined;
   }
   for (const key of Object.keys(preset)) {
-    if (!recognizedPresetKeys.has(key)) {
-      logger.warn(
-        `[getModelSpecAgentParams] Model spec "${modelSpec.name}" dropped preset key "${key}": not allowlisted for agent overrides`,
-      );
+    if (recognizedPresetKeys.has(key)) {
+      continue;
     }
+    const warningKey = JSON.stringify([modelSpec.name, key]);
+    if (warnedPresetKeys.has(warningKey)) {
+      continue;
+    }
+    warnedPresetKeys.add(warningKey);
+    logger.warn(
+      `[getModelSpecAgentParams] Model spec "${modelSpec.name}" dropped preset key "${key}": not allowlisted for agent overrides`,
+    );
   }
   const entries = MODEL_SPEC_AGENT_PARAM_KEYS.filter((key) => preset[key] != null).map(
     (key) => [key, preset[key]] as const,
