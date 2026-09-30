@@ -5,6 +5,7 @@ import type { TModelSpec } from 'librechat-data-provider';
 import {
   EModelEndpoint,
   AnthropicEffort,
+  tModelSpecSchema,
   bedrockInputParser,
   bedrockOutputParser,
 } from 'librechat-data-provider';
@@ -18,11 +19,11 @@ import {
 } from './specModel';
 
 const spec = (preset: Record<string, unknown>): TModelSpec =>
-  ({
+  tModelSpecSchema.parse({
     name: 'spec',
     label: 'Spec',
     preset: { endpoint: EModelEndpoint.agents, ...preset },
-  }) as TModelSpec;
+  });
 
 describe('getModelSpecAgentModel', () => {
   it('returns the spec model when the spec targets the agent', () => {
@@ -54,38 +55,56 @@ describe('getModelSpecAgentModel', () => {
 });
 
 describe('getModelSpecAgentParams', () => {
-  it('warns once about an unknown key without logging its value', () => {
+  it('warns once per dropped key after config parsing without logging values', () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
     const modelSpec = {
-      ...spec({ agent_id: 'agent_1', maxTokens: 4096, maxToken: 'secret-preset-value' }),
-      name: 'unknown-key-spec',
+      ...spec({
+        agent_id: 'agent_1',
+        maxTokens: 4096,
+        topP: 0.37,
+        max_tokens: 99999,
+        reasoning_effort: 'high',
+        stop: ['secret-stop-value'],
+      }),
+      name: 'dropped-key-spec',
     };
     expect(getModelSpecAgentParams({ id: 'agent_1' }, modelSpec)).toEqual({ maxTokens: 4096 });
     expect(getModelSpecAgentParams({ id: 'agent_1' }, modelSpec)).toEqual({ maxTokens: 4096 });
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      '[getModelSpecAgentParams] Model spec "unknown-key-spec" dropped preset key "maxToken": not allowlisted for agent overrides',
+    expect(modelSpec.preset).toMatchObject({
+      topP: 0.37,
+      max_tokens: 99999,
+      reasoning_effort: 'high',
+      stop: ['secret-stop-value'],
+    });
+    expect(warn.mock.calls).toEqual(
+      ['topP', 'max_tokens', 'reasoning_effort', 'stop'].map((key) => [
+        `[getModelSpecAgentParams] Model spec "dropped-key-spec" dropped preset key "${key}": not allowlisted for agent overrides`,
+      ]),
     );
   });
 
-  it('does not warn on the deployed cBioDBAgent-style preset', () => {
-    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
-    expect(
-      getModelSpecAgentParams(
-        { id: 'agent_1' },
-        spec({
-          agent_id: 'agent_1',
-          endpoint: EModelEndpoint.agents,
-          greeting: 'Welcome to cBioDBAgent',
-          maxTokens: 4096,
-          modelLabel: 'cBioDBAgent',
-          temperature: 0,
-          thinking: false,
-        }),
-      ),
-    ).toEqual({ maxTokens: 4096, temperature: 0, thinking: false });
-    expect(warn).not.toHaveBeenCalled();
-  });
+  it.each([undefined, 'Configured prompt'])(
+    'does not warn on the deployed preset with promptPrefix %s',
+    (promptPrefix) => {
+      const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+      expect(
+        getModelSpecAgentParams(
+          { id: 'agent_1' },
+          spec({
+            agent_id: 'agent_1',
+            endpoint: EModelEndpoint.agents,
+            greeting: 'Welcome to cBioDBAgent',
+            maxTokens: 4096,
+            modelLabel: 'cBioDBAgent',
+            temperature: 0,
+            thinking: false,
+            promptPrefix,
+          }),
+        ),
+      ).toEqual({ maxTokens: 4096, temperature: 0, thinking: false });
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
 
   it('recognizes preset display fields without forwarding them as agent parameters', () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
@@ -108,11 +127,11 @@ describe('getModelSpecAgentParams', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('deduplicates separately for each spec name and unknown key', () => {
+  it('deduplicates separately for each spec name and dropped key after config parsing', () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
     for (const name of ['dedupe-spec-a', 'dedupe-spec-b']) {
       const modelSpec = {
-        ...spec({ agent_id: 'agent_1', unknownOne: 'private', unknownTwo: 'private' }),
+        ...spec({ agent_id: 'agent_1', topP: 0.4, stop: ['private'] }),
         name,
       };
       getModelSpecAgentParams({ id: 'agent_1' }, modelSpec);
@@ -120,6 +139,14 @@ describe('getModelSpecAgentParams', () => {
     }
     expect(warn).toHaveBeenCalledTimes(4);
     expect(warn.mock.calls.flat().join(' ')).not.toContain('private');
+  });
+
+  it('cannot warn about true typos stripped by config parsing', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    const modelSpec = spec({ agent_id: 'agent_1', maxTokens: 4096, maxTokenz: 99999 });
+    expect(modelSpec.preset).not.toHaveProperty('maxTokenz');
+    expect(getModelSpecAgentParams({ id: 'agent_1' }, modelSpec)).toEqual({ maxTokens: 4096 });
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('returns only allowlisted generation params from the spec preset', () => {

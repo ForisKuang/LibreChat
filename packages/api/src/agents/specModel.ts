@@ -1,5 +1,4 @@
 import { logger } from '@librechat/data-schemas';
-import { tPresetSchema } from 'librechat-data-provider';
 import type { TModelSpec, TModelSpecPreset } from 'librechat-data-provider';
 
 /**
@@ -41,8 +40,24 @@ export const MODEL_SPEC_AGENT_PARAM_KEYS = [
   'promptCacheTtl',
 ] as const;
 
-/** The base modelSpec preset schema also recognizes UI fields such as title and spec. */
-const recognizedPresetKeys = new Set<string>(Object.keys(tPresetSchema.shape));
+/** Display/identity fields are consumed separately from the agent generation overrides. */
+const recognizedPresetKeys = new Set<string>([
+  'endpoint',
+  'endpointType',
+  'agent_id',
+  'assistant_id',
+  'model',
+  'modelLabel',
+  'userLabel',
+  'greeting',
+  'iconURL',
+  'promptPrefix',
+  'spec',
+  'title',
+  'presetId',
+  'chatGptLabel',
+  ...MODEL_SPEC_AGENT_PARAM_KEYS,
+]);
 const warnedPresetKeys = new Set<string>();
 
 export type ModelSpecAgentParams = Pick<
