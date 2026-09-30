@@ -35,6 +35,7 @@ export const MODEL_SPEC_AGENT_PARAM_KEYS = [
   'maxOutputTokens',
   'temperature',
   'promptCache',
+  'promptCacheTtl',
 ] as const;
 
 export type ModelSpecAgentParams = Pick<

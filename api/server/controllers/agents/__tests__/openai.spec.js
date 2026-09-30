@@ -559,6 +559,7 @@ describe('OpenAIChatCompletionController', () => {
     it.each([
       ['generation params', { effort: 'low', maxOutputTokens: 4096 }],
       ['thinking:false', { thinking: false }],
+      ['cache TTL', { promptCache: true, promptCacheTtl: '1h' }],
     ])('forwards spec %s to withAgentModel and runs the merged agent', async (_label, params) => {
       const {
         initializeAgent,

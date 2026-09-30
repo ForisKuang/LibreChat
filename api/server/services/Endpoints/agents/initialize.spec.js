@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const {
+  compactAgentsSchema,
   ResourceType,
   PermissionBits,
   PrincipalType,
@@ -411,6 +412,38 @@ describe('initializeClient — processAgent ACL gate', () => {
         promptCache: true,
         effort: 'low',
         maxOutputTokens: 4096,
+      });
+    });
+
+    it.each([undefined, '5m'])('ignores request TTL injection with server TTL %s', async (ttl) => {
+      const endpointOption = makeEndpointOption();
+      endpointOption.spec = 'cache-spec';
+      endpointOption.model_parameters = compactAgentsSchema.parse({
+        spec: 'cache-spec',
+        promptCacheTtl: '1h',
+        model_parameters: { promptCacheTtl: '1h' },
+      });
+      mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+      const req = makeReq();
+      req.body.promptCacheTtl = '1h';
+      req.body.model_parameters = { promptCacheTtl: '1h' };
+      req.config.modelSpecs = {
+        list: [
+          {
+            name: 'cache-spec',
+            preset: { endpoint: 'agents', agent_id: PRIMARY_ID, promptCacheTtl: ttl },
+          },
+        ],
+      };
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      expect(mockInitializeAgent.mock.calls[0][0].agent.model_parameters?.promptCacheTtl).toBe(ttl);
+      expect(mockInitializeAgent.mock.calls[0][0].endpointOption.model_parameters).toEqual({
+        spec: 'cache-spec',
       });
     });
 

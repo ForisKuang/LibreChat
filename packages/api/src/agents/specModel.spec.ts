@@ -1,3 +1,5 @@
+import { ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
+import { Providers, getChatModelClass } from '@librechat/agents';
 import type { TModelSpec } from 'librechat-data-provider';
 import {
   EModelEndpoint,
@@ -75,6 +77,7 @@ describe('getModelSpecAgentParams', () => {
       effort: 'low',
       maxOutputTokens: 4096,
       promptCache: true,
+      promptCacheTtl: '1h',
       temperature: 0.2,
     });
   });
@@ -90,7 +93,10 @@ describe('getModelSpecAgentParams', () => {
 
   it('ignores specs pointing at a different agent', () => {
     expect(
-      getModelSpecAgentParams({ id: 'agent_1' }, spec({ agent_id: 'agent_2', effort: 'low' })),
+      getModelSpecAgentParams(
+        { id: 'agent_1' },
+        spec({ agent_id: 'agent_2', effort: 'low', promptCacheTtl: '1h' }),
+      ),
     ).toBeUndefined();
   });
 
@@ -308,6 +314,33 @@ describe('merged spec params through the Bedrock parsers', () => {
       model,
       getModelSpecAgentParams({ id: 'agent_1' }, spec({ agent_id: 'agent_1', model, ...preset })),
     ).model_parameters as Record<string, unknown>;
+
+  it.each([haiku, sonnet])('%s carries the spec TTL in the Bedrock request', (model) => {
+    const parameters = merged(
+      model,
+      { promptCache: true, promptCacheTtl: '1h' },
+      { promptCache: true, promptCacheTtl: '5m' },
+    );
+    const llmConfig = bedrockOutputParser(bedrockInputParser.parse(parameters));
+    expect(llmConfig.promptCacheTtl).toBe('1h');
+    const BedrockModel = getChatModelClass(Providers.BEDROCK);
+    const client = new BedrockModel({
+      ...llmConfig,
+      model,
+      region: 'us-east-1',
+      credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
+    });
+    const command = new ConverseStreamCommand({
+      modelId: model,
+      messages: [],
+      ...client.invocationParams({
+        tools: [{ toolSpec: { name: 'lookup', inputSchema: { json: { type: 'object' } } } }],
+      }),
+    });
+    expect(command.input.toolConfig?.tools).toContainEqual({
+      cachePoint: { type: 'default', ttl: '1h' },
+    });
+  });
 
   it('Haiku with thinking:false sends no thinking config', () => {
     const llmConfig = toBedrock(merged(haiku, { thinking: false, maxOutputTokens: 2048 }));
