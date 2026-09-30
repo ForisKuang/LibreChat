@@ -1,5 +1,6 @@
 import { ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
 import { Providers, getChatModelClass } from '@librechat/agents';
+import { logger } from '@librechat/data-schemas';
 import type { TModelSpec } from 'librechat-data-provider';
 import {
   EModelEndpoint,
@@ -7,6 +8,7 @@ import {
   bedrockInputParser,
   bedrockOutputParser,
 } from 'librechat-data-provider';
+import { getLLMConfig } from '../endpoints/anthropic/llm';
 import {
   withAgentModel,
   mergeSpecAgentParams,
@@ -52,6 +54,26 @@ describe('getModelSpecAgentModel', () => {
 });
 
 describe('getModelSpecAgentParams', () => {
+  it('warns about dropped keys without logging preset values or spec metadata', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    const params = getModelSpecAgentParams(
+      { id: 'agent_1' },
+      spec({
+        agent_id: 'agent_1',
+        model: 'haiku',
+        greeting: 'Welcome',
+        iconURL: 'https://example.com/icon.png',
+        maxTokens: 4096,
+        topP: 0.5,
+      }),
+    );
+    expect(params).toEqual({ maxTokens: 4096 });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      '[getModelSpecAgentParams] Model spec "spec" dropped preset key "topP": not allowlisted for agent overrides',
+    );
+  });
+
   it('returns only allowlisted generation params from the spec preset', () => {
     expect(
       getModelSpecAgentParams(
@@ -95,7 +117,7 @@ describe('getModelSpecAgentParams', () => {
     expect(
       getModelSpecAgentParams(
         { id: 'agent_1' },
-        spec({ agent_id: 'agent_2', effort: 'low', promptCacheTtl: '1h' }),
+        spec({ agent_id: 'agent_2', effort: 'low', maxTokens: 4096, promptCacheTtl: '1h' }),
       ),
     ).toBeUndefined();
   });
@@ -252,6 +274,17 @@ describe('withAgentModel', () => {
 });
 
 describe('mergeSpecAgentParams', () => {
+  it.each([
+    [{ maxTokens: 4096 }, { maxTokens: 8192, maxOutputTokens: 16384 }, 4096],
+    [{ maxOutputTokens: 4096 }, { maxTokens: 8192 }, 4096],
+    [{ maxTokens: 8192, maxOutputTokens: 4096 }, { maxTokens: 16384 }, 4096],
+  ])('normalizes a preset cap over both saved aliases (%j)', (params, saved, expected) => {
+    expect(mergeSpecAgentParams(saved, params)).toEqual({
+      maxTokens: expected,
+      maxOutputTokens: expected,
+    });
+  });
+
   const savedThinking = {
     model: 'haiku',
     thinkingBudget: 2000,
@@ -314,6 +347,53 @@ describe('merged spec params through the Bedrock parsers', () => {
       model,
       getModelSpecAgentParams({ id: 'agent_1' }, spec({ agent_id: 'agent_1', model, ...preset })),
     ).model_parameters as Record<string, unknown>;
+
+  it.each([haiku, sonnet])('%s sends the preset maxTokens cap and no thinking', (model) => {
+    const parameters = merged(
+      model,
+      { thinking: false, maxTokens: 4096 },
+      {
+        maxTokens: 8192,
+        maxOutputTokens: 16384,
+        thinking: true,
+        thinkingBudget: 2000,
+        additionalModelRequestFields: { thinking: { type: 'enabled', budget_tokens: 2000 } },
+      },
+    );
+    const llmConfig = bedrockOutputParser(bedrockInputParser.parse(parameters));
+    const BedrockModel = getChatModelClass(Providers.BEDROCK);
+    const client = new BedrockModel({
+      ...llmConfig,
+      model,
+      region: 'us-east-1',
+      credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
+    });
+    const command = new ConverseStreamCommand({
+      modelId: model,
+      messages: [],
+      ...client.invocationParams({}),
+    });
+    expect(command.input.inferenceConfig?.maxTokens).toBe(4096);
+    expect(command.input.additionalModelRequestFields ?? {}).not.toHaveProperty('thinking');
+  });
+
+  it.each(['claude-haiku-4-5', 'claude-sonnet-5'])(
+    '%s sends max_tokens 4096 with thinking disabled through the Anthropic agent client',
+    (model) => {
+      const parameters = merged(model, { thinking: false, maxTokens: 4096 });
+      const { llmConfig } = getLLMConfig('test-api-key', { modelOptions: parameters });
+      const AnthropicModel = getChatModelClass(Providers.ANTHROPIC);
+      const client = new AnthropicModel(llmConfig);
+      const request = client.invocationParams({});
+      expect(request.max_tokens).toBe(4096);
+      expect(request.thinking).toEqual({ type: 'disabled' });
+    },
+  );
+
+  it.each([haiku, sonnet])('%s prefers preset maxOutputTokens when both caps are set', (model) => {
+    const llmConfig = toBedrock(merged(model, { maxTokens: 8192, maxOutputTokens: 4096 }));
+    expect(llmConfig.maxTokens).toBe(4096);
+  });
 
   it.each([haiku, sonnet])('%s carries the spec TTL in the Bedrock request', (model) => {
     const parameters = merged(
